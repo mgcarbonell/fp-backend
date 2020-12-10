@@ -1,10 +1,13 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
+from flask_socketio import SocketIO, send
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ECHO'] = True
-app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql:///countzero'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql:///countzero' #dotenv will need to go here.
+app.config['SECRET_KEY'] = 'placeholder' #dotenv will need to go here.
+socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
 class User(db.Model):
