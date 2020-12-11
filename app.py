@@ -1,35 +1,98 @@
-import os
+#!/usr/bin/env python3
 
-from flask import Flask, render_template_string
-from flask_security import Security, current_user, auth_required, hash_password, SQLAlchemySessionUserDatastore
-from database import db_session, init_db
-from models import User, Role
+from flask import jsonify, request
+from models import app, User
+from flask_sqlalchemy import SQLAlchemy
+from itsdangerous import TimedJSONWebSignatureSerializer as Serializer, BadSignature, SignatureExpired
+from flask_httpauth import HTTPTokenAuth
+from flask_cors import CORS, cross_origin
+from flask_socketio import SocketIO, emit
+from crud.user_crud import (
+    get_user, create_user, update_user, destroy_user
+)
 
-app = Flask(__name__)
-app.config['DEBUG'] = True
+app.config['CORS_HEADERS'] = 'Content-Type'
+cors = CORS(app, resources={
+    r'/*': {
+        'origins': '*'
+    }
+})
 
-# Generate a nice key using secrets.token_urlsafe()
-app.config['SECRET_KEY'] = os.environ.get("SECRET_KEY")
-# Bcrypt is set as default SECURITY_PASSWORD_HASH
-# Generate a good salt using: secrets.SystemRandom().getrandbits(128)
-app.config['SECURITY_PASSWORD_SALT'] = os.environ.get("SECURITY_PASSWORD_SALT")
+auth = HTTPTokenAuth('Bearer')
 
-# Setup Flask-Security
-user_datastore = SQLAlchemySessionUserDatastore(db_session, User, Role)
-security = Security(app, user_datastore)
+socketio = SocketIO(app)
 
-# Create a user to test with
-@app.before_first_request
-def create_user():
-    init_db()
-    user_datastore.create_user(email="test@me.com", password=hash_password("password"))
-    db_session.commit()
+# Errors
+@app.errorhandler(Exception)
+def unhandled_exception(e):
+    app.logger.error(f'Unhandled Exception: {e}')
+    message_str = e.__str__()
+    return jsonify(message=message_str.split(':')[0])
 
-# Views
-@app.route("/")
-@auth_required()
+# Auth
+@auth.verify_token
+def verify_token(token):
+  s = Serializer(app.config['SECRET_KEY'])
+  try:
+    data = s.loads(token)
+    g.user = User.query.filter_by(id=data[id]).first()
+  except SignatureExpired:
+    print("ERROR: signature expired!")
+    return False
+  except BadSignature:
+    print("Error: invalid signature!")
+    return False
+  return True
+
+# User routes
+@app.route('/auth/login', methods=['POST'])
+def login():
+  if request.json['email'] is None or request.json['password'] is None:
+    raise KeyError('Email and Password is required.')
+
+  user = User.query.filter_by(email=request.json['email']).first() #find first entry of the email
+
+  if not user or not user.verify_password(request.json['password']):
+    raise Exception("Unauthorized.")
+
+  g.user = user
+  token = user.generate_token()
+  return jsonify(user=user.as_dict(), token=token.decode('ascii'), status_code=200)
+
+@app.route('/auth/register', methods=['POST'])
+def register():
+  return create_user(**request.json)
+
+@app.route('/users/<int:id>')
+def user_get_one(id):
+  return get_user(id)
+
+@app.route('/profile/<int:user_id>', methods=['GET', 'POST', 'PUT'])
+@auth.login_required #require a user to be logged in, use with socket routes
+def profile(user_id):
+  if request.method == 'GET':
+    return get_user(id)
+  elif request.method == 'PUT':
+    return update_user(id, **request.get_json())
+  elif request.method == 'DELETE':
+    return destroy_user(id)
+
+# routes
+@app.route('/')
 def home():
-    return render_template_string('Hello {{email}} !', email=current_user.email)
+  return
+
+# Socket routes
+
+@socketio.on('connect')
+# @auth.login_required omitting for now for test connections
+def test_connect():
+  emit('after connect', {'data':'Lets dance'})
+
+@socketio.on('message')
+def handleMessage(msg):
+  print('Message: ' + msg)
+  send(msg, broadcast=True)
 
 if __name__ == '__main__':
-    app.run()
+  socketio.run(app)
