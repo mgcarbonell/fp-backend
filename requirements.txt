@@ -34,6 +34,7 @@ filelock==3.0.12
 Flask==1.1.2
 Flask-BabelEx==0.9.4
 flask-buzz==0.1.15
+Flask-Cors==3.0.9
 Flask-Login==0.5.0
 Flask-Mail==0.9.1
 flask-praetorian==1.1.0
@@ -90,6 +91,7 @@ pop-transition==1.0.1
 prompt-toolkit==3.0.8
 Protego==0.1.16
 protobuf==3.12.3
+psycopg2-binary==2.8.6
 ptyprocess==0.6.0
 py-buzz==1.0.3
 pyasn1==0.4.8
